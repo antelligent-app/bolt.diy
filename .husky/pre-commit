@@ -41,8 +41,3 @@
 # git add app/commit.json
 
 # echo "👍 All checks passed! Committing changes..."
-. "$(dirname "$0")/_/husky.sh"
-
-npx commitlint --edit $1
-
-exit 0
