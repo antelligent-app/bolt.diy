@@ -6,6 +6,7 @@ import { createScopedLogger } from '~/utils/logger';
 import { unreachable } from '~/utils/unreachable';
 import type { ActionCallbackData } from './message-parser';
 import type { BoltShell } from '~/utils/shell';
+import type { FileMap } from '~/types/workbench-files';
 
 const logger = createScopedLogger('ActionRunner');
 
@@ -228,5 +229,46 @@ export class ActionRunner {
     const actions = this.actions.get();
 
     this.actions.setKey(id, { ...actions[id], ...newState });
+  }
+
+  async createGitFiles(fileMap: FileMap) {
+    for (const key in fileMap) {
+      if (Object.prototype.hasOwnProperty.call(fileMap, key)) {
+        const direntPath = key.replace('/home/project/', '');
+        console.log('createGitFiles - direntPath:', direntPath);
+        const dirent = fileMap[direntPath];
+        const webcontainer = await this.#webcontainer;
+        let folder = nodePath.dirname(direntPath);
+
+        // remove trailing slashes
+        folder = folder.replace(/\/+$/g, '');
+
+        if (folder !== '.') {
+          try {
+            await webcontainer.fs.mkdir(folder, { recursive: true });
+            logger.debug('createGitFiles - Created folder', folder);
+          } catch (error) {
+            logger.error('createGitFiles - Failed to create folder\n\n', error);
+          }
+        }
+
+        if (dirent?.type === 'file') {
+          try {
+            const existingContent = await webcontainer.fs.readFile(direntPath);
+            if (existingContent) {
+              await webcontainer.fs.rm(direntPath);
+            }
+          } catch (error) {
+            logger.error('createGitFiles - Failed to remove file\n\n', error);
+          }
+          try {
+            await webcontainer.fs.writeFile(direntPath, dirent.content);
+            logger.debug(`createGitFiles - File written ${direntPath}`);
+          } catch (error) {
+            logger.error('createGitFiles - Failed to write file\n\n', error);
+          }
+        }
+      }
+    }
   }
 }

@@ -6,7 +6,7 @@ import { webcontainer } from '~/lib/webcontainer';
 import type { ITerminal } from '~/types/terminal';
 import { unreachable } from '~/utils/unreachable';
 import { EditorStore } from './editor';
-import { FilesStore, type FileMap } from './files';
+import { FilesStore } from './files';
 import { PreviewsStore } from './previews';
 import { TerminalStore } from './terminal';
 import JSZip from 'jszip';
@@ -17,6 +17,9 @@ import { extractRelativePath } from '~/utils/diff';
 import { description } from '~/lib/persistence';
 import Cookies from 'js-cookie';
 import { createSampler } from '~/utils/sampler';
+import axios from 'axios';
+import { getAccountClient } from '../appwrite';
+import type { FileMap } from '~/types/workbench-files';
 
 export interface ArtifactState {
   id: string;
@@ -297,7 +300,6 @@ export class WorkbenchStore {
 
     const action = artifact.runner.actions.get()[data.actionId];
 
-
     if (!action || action.executed) {
       return;
     }
@@ -515,6 +517,49 @@ export class WorkbenchStore {
     } catch (error) {
       console.error('Error pushing to GitHub:', error);
       throw error; // Rethrow the error for further handling
+    }
+  }
+
+  async pushToGit(projectRepositoryName: string) {
+    try {
+      // Get all files
+      const authToken = (await getAccountClient().createJWT()).jwt;
+      const files = this.files.get();
+      if (!files || Object.keys(files).length === 0) {
+        throw new Error('No files found to push');
+      }
+
+      axios.post(
+        '/api/repositories/commits',
+        {
+          fileMap: files,
+          projectRepositoryName,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+          },
+        },
+      );
+    } catch (error) {
+      console.error('Error pushing to GitHub:', error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async createFilesFromGitRepo(fileMap: FileMap, messageId: string) {
+    const artifact = this.#getArtifact(messageId);
+    if (!artifact) {
+      unreachable('Artifact not found');
+    }
+    await artifact.runner.createGitFiles(fileMap);
+    await this.setDocuments(fileMap);
+    for (const key in fileMap) {
+      if (Object.prototype.hasOwnProperty.call(fileMap, key)) {
+        const dirent = fileMap[key];
+        if (dirent?.type === 'file') {
+          await this.files.setKey(key, dirent);
+        }
+      }
     }
   }
 }

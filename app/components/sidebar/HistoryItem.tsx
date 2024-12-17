@@ -4,9 +4,11 @@ import * as Dialog from '@radix-ui/react-dialog';
 import { type ChatHistoryItem } from '~/lib/persistence';
 import WithTooltip from '~/components/ui/Tooltip';
 import { useEditChatDescription } from '~/lib/hooks';
+import type { Project } from '~/types/project';
+import { motion } from 'framer-motion';
 
 interface HistoryItemProps {
-  item: ChatHistoryItem;
+  item: Project;
   onDelete?: (event: React.UIEvent) => void;
   onDuplicate?: (id: string) => void;
   exportChat: (id?: string) => void;
@@ -52,8 +54,14 @@ export function HistoryItem({ item, onDelete, onDuplicate, exportChat }: History
       {editing ? (
         renderDescriptionForm
       ) : (
-        <a href={`/chat/${item.urlId}`} className="flex w-full relative truncate block">
-          {currentDescription}
+        // <a href={`/chat/${item.repositoryName}`} className="flex w-full relative truncate block">
+        <motion.a
+          href={`/chat/${item.repositoryName}`}
+          className="flex w-full relative truncate block"
+          whileHover={{ translateX: 10 }}
+        >
+          {/* {currentDescription} */}
+          {item.name}
           <div
             className={classNames(
               'absolute right-0 z-1 top-0 bottom-0 bg-gradient-to-l from-bolt-elements-background-depth-2 group-hover:from-bolt-elements-background-depth-3 box-content pl-3 to-transparent w-10 flex justify-end group-hover:w-22 group-hover:from-99%',
@@ -97,7 +105,7 @@ export function HistoryItem({ item, onDelete, onDuplicate, exportChat }: History
               </Dialog.Trigger>
             </div>
           </div>
-        </a>
+        </motion.a>
       )}
     </div>
   );

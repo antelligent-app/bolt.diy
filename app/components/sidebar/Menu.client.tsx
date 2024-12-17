@@ -11,6 +11,13 @@ import { logger } from '~/utils/logger';
 import { HistoryItem } from './HistoryItem';
 import { binDates } from './date-binning';
 import { useSearchFilter } from '~/lib/hooks/useSearchFilter';
+import { LogoutButton } from './LogoutButton';
+import { SettingsKeyButton } from './SettingsKeyButton';
+import { getAccountClient, getProjects } from '~/lib/appwrite';
+import type { Project } from '~/types/project';
+import type { Models } from 'appwrite';
+import { useSearchProjectFilter } from '~/lib/hooks/useSearchProjectFilter';
+import Avatar from 'react-avatar';
 
 const menuVariants = {
   closed: {
@@ -33,7 +40,7 @@ const menuVariants = {
   },
 } satisfies Variants;
 
-type DialogContent = { type: 'delete'; item: ChatHistoryItem } | null;
+type DialogContent = { type: 'delete'; item: Project } | null;
 
 function CurrentDateTime() {
   const [dateTime, setDateTime] = useState(new Date());
@@ -57,26 +64,35 @@ function CurrentDateTime() {
 export const Menu = () => {
   const { duplicateCurrentChat, exportChat } = useChatHistory();
   const menuRef = useRef<HTMLDivElement>(null);
-  const [list, setList] = useState<ChatHistoryItem[]>([]);
+  // const [list, setList] = useState<ChatHistoryItem[]>([]);
   const [open, setOpen] = useState(false);
   const [dialogContent, setDialogContent] = useState<DialogContent>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [user, setUser] = useState<Models.User<Models.Preferences>>();
+  const [loadFinished, setLoadFinished] = useState(false);
 
-  const { filteredItems: filteredList, handleSearchChange } = useSearchFilter({
-    items: list,
+  const { filteredItems: filteredList, handleSearchChange } = useSearchProjectFilter({
+    items: projects,
     searchFields: ['description'],
   });
 
-  const loadEntries = useCallback(() => {
-    if (db) {
-      getAll(db)
-        .then((list) => list.filter((item) => item.urlId && item.description))
-        .then(setList)
-        .catch((error) => toast.error(error.message));
-    }
+  const loadEntries = useCallback(async () => {
+    setProjects(await getProjects());
+    setUser(await getAccountClient().get());
+    setLoadFinished(true);
   }, []);
 
-  const deleteItem = useCallback((event: React.UIEvent, item: ChatHistoryItem) => {
+  // const loadEntries = useCallback(() => {
+  //   if (db) {
+  //     getAll(db)
+  //       .then((list) => list.filter((item) => item.urlId && item.description))
+  //       .then(setList)
+  //       .catch((error) => toast.error(error.message));
+  //   }
+  // }, []);
+
+  const deleteItem = useCallback((event: React.UIEvent, item: Project) => {
     event.preventDefault();
 
     if (db) {
@@ -127,7 +143,7 @@ export const Menu = () => {
     };
   }, []);
 
-  const handleDeleteClick = (event: React.UIEvent, item: ChatHistoryItem) => {
+  const handleDeleteClick = (event: React.UIEvent, item: Project) => {
     event.preventDefault();
     setDialogContent({ type: 'delete', item });
   };
@@ -143,19 +159,34 @@ export const Menu = () => {
       initial="closed"
       animate={open ? 'open' : 'closed'}
       variants={menuVariants}
-      className="flex selection-accent flex-col side-menu fixed top-0 w-[350px] h-full bg-bolt-elements-background-depth-2 border-r rounded-r-3xl border-bolt-elements-borderColor z-sidebar shadow-xl shadow-bolt-elements-sidebar-dropdownShadow text-sm"
+      className=" px-7 pt-7 flex selection-accent flex-col side-menu fixed top-0 w-[400px] h-full bg-bolt-elements-background-depth-2 border-r border-bolt-elements-borderColor z-sidebar shadow-xl shadow-bolt-elements-sidebar-dropdownShadow text-sm"
     >
+      <div className="flex flex-row-reverse my-4">
+        <ThemeSwitch />
+      </div>
+      {
+        user && (
+          <div className="flex flex-col space-y-4 md:space-y-0 md:space-x-6 md:flex-row my-4">
+            <Avatar className='self-center flex-shrink-0 w-24 h-24 border rounded-full md:justify-self-start dark:bg-gray-500' name={user?.name} size="45" />
+            <div className="flex flex-col">
+              <h4 className="text-lg font-semibold text-center md:text-left text-bolt-elements-textPrimary">{user?.name}</h4>
+              <p className="text-bolt-elements-textTertiary">{user?.email}</p>
+            </div>
+          </div>
+        )
+      }
       <div className="h-[60px]" /> {/* Spacer for top margin */}
       <CurrentDateTime />
       <div className="flex-1 flex flex-col h-full w-full overflow-hidden">
         <div className="p-4 select-none">
-          <a
-            href="/"
-            className="flex gap-2 items-center bg-bolt-elements-sidebar-buttonBackgroundDefault text-bolt-elements-sidebar-buttonText hover:bg-bolt-elements-sidebar-buttonBackgroundHover rounded-md p-2 transition-theme mb-4"
-          >
-            <span className="inline-block i-bolt:chat scale-110" />
-            Start new chat
-          </a>
+        <motion.a
+          href="/"
+          className="text-bolt-elements-textPrimary font-medium flex gap-2 items-center p-2 text-sm"
+          whileHover={{ translateX: 10 }}
+        >
+          <span className="inline-block i-bolt:chat scale-110" />
+          Create project
+        </motion.a>
           <div className="relative w-full">
             <input
               className="w-full bg-white dark:bg-bolt-elements-background-depth-4 relative px-2 py-1.5 rounded-md focus:outline-none placeholder-bolt-elements-textTertiary text-bolt-elements-textPrimary dark:text-bolt-elements-textPrimary border border-bolt-elements-borderColor"
@@ -166,13 +197,19 @@ export const Menu = () => {
             />
           </div>
         </div>
-        <div className="text-bolt-elements-textPrimary font-medium pl-6 pr-5 my-2">Your Chats</div>
+        <div className="text-bolt-elements-textPrimary font-medium pl-6 pr-5 my-2">Your Projects</div>
         <div className="flex-1 overflow-auto pl-4 pr-5 pb-5">
-          {filteredList.length === 0 && (
+          {/* {filteredList.length === 0 && (
             <div className="pl-2 text-bolt-elements-textTertiary">
-              {list.length === 0 ? 'No previous conversations' : 'No matches found'}
+              {projects.length === 0 ? 'No previous conversations' : 'No matches found'}
             </div>
-          )}
+          )} */}
+          {
+            !loadFinished && (
+              <div className="text-center w-full text-bolt-elements-textSecondary i-svg-spinners:3-dots-fade text-4xl mt-4"></div>
+            )
+          }
+          {projects.length === 0 && loadFinished && <div className="pl-2 text-bolt-elements-textTertiary">No previous projects</div>}
           <DialogRoot open={dialogContent !== null}>
             {binDates(filteredList).map(({ category, items }) => (
               <div key={category} className="mt-4 first:mt-0 space-y-1">
@@ -193,13 +230,13 @@ export const Menu = () => {
             <Dialog onBackdrop={closeDialog} onClose={closeDialog}>
               {dialogContent?.type === 'delete' && (
                 <>
-                  <DialogTitle>Delete Chat?</DialogTitle>
+                  <DialogTitle>Delete Project?</DialogTitle>
                   <DialogDescription asChild>
                     <div>
                       <p>
-                        You are about to delete <strong>{dialogContent.item.description}</strong>.
+                        You are about to delete <strong>{dialogContent.item.name}</strong>.
                       </p>
-                      <p className="mt-1">Are you sure you want to delete this chat?</p>
+                      <p className="mt-1">Are you sure you want to delete this project?</p>
                     </div>
                   </DialogDescription>
                   <div className="px-5 pb-4 bg-bolt-elements-background-depth-2 flex gap-2 justify-end">
@@ -221,7 +258,9 @@ export const Menu = () => {
             </Dialog>
           </DialogRoot>
         </div>
-        <div className="flex items-center justify-between border-t border-bolt-elements-borderColor p-4">
+        <div className="flex items-center justify-between border-t border-bolt-elements-borderColor p-4 bg-gray-3 dark:bg-dark-2 rounded-t-lg">
+          <LogoutButton />
+          <SettingsKeyButton />
           <SettingsButton onClick={() => setIsSettingsOpen(true)} />
           <ThemeSwitch />
         </div>

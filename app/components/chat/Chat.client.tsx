@@ -3,7 +3,7 @@
  * Preventing TS checks with files presented in the video for a better presentation.
  */
 import { useStore } from '@nanostores/react';
-import type { Message } from 'ai';
+import type { Message } from '~/types/message';
 import { useChat } from 'ai/react';
 import { useAnimate } from 'framer-motion';
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
@@ -20,6 +20,8 @@ import Cookies from 'js-cookie';
 import { debounce } from '~/utils/debounce';
 import { useSettings } from '~/lib/hooks/useSettings';
 import type { ProviderInfo } from '~/types/model';
+import type { Project } from '~/types/project';
+import { getAccountClient, getProjectByRepositoryName } from '~/lib/appwrite';
 
 const toastAnimation = cssTransition({
   enter: 'animated fadeInRight',
@@ -31,7 +33,7 @@ const logger = createScopedLogger('Chat');
 export function Chat() {
   renderLogger.trace('Chat');
 
-  const { ready, initialMessages, storeMessageHistory, importChat, exportChat } = useChatHistory();
+  const { ready, initialMessages, storeMessageHistory, importChat, exportChat, project } = useChatHistory();
   const title = useStore(description);
 
   return (
@@ -43,6 +45,7 @@ export function Chat() {
           exportChat={exportChat}
           storeMessageHistory={storeMessageHistory}
           importChat={importChat}
+          project={project}
         />
       )}
       <ToastContainer
@@ -78,14 +81,15 @@ export function Chat() {
 
 interface ChatProps {
   initialMessages: Message[];
-  storeMessageHistory: (messages: Message[]) => Promise<void>;
+  storeMessageHistory: (project: Project) => void;
   importChat: (description: string, messages: Message[]) => Promise<void>;
   exportChat: () => void;
   description?: string;
+  project?: Project
 }
 
 export const ChatImpl = memo(
-  ({ description, initialMessages, storeMessageHistory, importChat, exportChat }: ChatProps) => {
+  ({ description, initialMessages, storeMessageHistory, importChat, exportChat, project }: ChatProps) => {
     useShortcuts();
 
     const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -94,6 +98,8 @@ export const ChatImpl = memo(
     const [imageDataList, setImageDataList] = useState<string[]>([]); // Move here
     const files = useStore(workbenchStore.files);
     const { activeProviders } = useSettings();
+    const [projectName, setProjectName] = useState<string>(project ? project.name : '');
+    const [authToken, setAuthToken] = useState<string>('');
 
     const [model, setModel] = useState(() => {
       const savedModel = Cookies.get('selectedModel');
@@ -115,6 +121,10 @@ export const ChatImpl = memo(
       body: {
         apiKeys,
         files,
+        projectName
+      },
+      headers: {
+        Authorization: `Bearer ${authToken}`
       },
       onError: (error) => {
         logger.error('Request failed\n\n', error);
@@ -124,6 +134,14 @@ export const ChatImpl = memo(
       },
       onFinish: () => {
         logger.debug('Finished streaming');
+      },
+      onResponse: async (response) => {
+        const repositoryName = response.headers.get('repositoryName');
+        if (!repositoryName) {
+          return;
+        }
+        const project = await getProjectByRepositoryName(repositoryName);
+        storeMessageHistory(project);
       },
       initialMessages,
       initialInput: Cookies.get(PROMPT_COOKIE_KEY) || '',
@@ -139,12 +157,13 @@ export const ChatImpl = memo(
     }, []);
 
     useEffect(() => {
-      parseMessages(messages, isLoading);
+      parseMessages(messages as any, isLoading);
 
       if (messages.length > initialMessages.length) {
-        storeMessageHistory(messages).catch((error) => toast.error(error.message));
+        // storeMessageHistory(project as Project).catch((error) => toast.error(error.message));
+        storeMessageHistory(project as Project);
       }
-    }, [messages, isLoading, parseMessages]);
+    }, [messages, isLoading, project, parseMessages]);
 
     const scrollTextArea = () => {
       const textarea = textareaRef.current;
@@ -305,6 +324,28 @@ export const ChatImpl = memo(
       Cookies.set('selectedProvider', newProvider.name, { expires: 30 });
     };
 
+
+    const fetchUserPreferrences = async () => {
+      const preferrences = await getAccountClient().getPrefs();
+      if (preferrences['providerKeys']) {
+        try {
+          setApiKeys(JSON.parse(preferrences['providerKeys']))
+        } catch (error) {
+          console.error('Error parsing providerKeys preferrence');
+        }
+      }
+    }
+
+    const fetchAuthToken = async () => {
+      setAuthToken((await getAccountClient().createJWT()).jwt)
+    }
+
+    useEffect(() => {
+      fetchUserPreferrences();
+      fetchAuthToken();
+    }, [])
+
+
     return (
       <BaseChat
         ref={animationScope}
@@ -357,6 +398,9 @@ export const ChatImpl = memo(
         setUploadedFiles={setUploadedFiles}
         imageDataList={imageDataList}
         setImageDataList={setImageDataList}
+        projectName={projectName}
+        setProjectName={setProjectName}
+        project={project}
       />
     );
   },

@@ -8,24 +8,25 @@ import { WORK_DIR } from '~/utils/constants';
 import { computeFileModifications } from '~/utils/diff';
 import { createScopedLogger } from '~/utils/logger';
 import { unreachable } from '~/utils/unreachable';
+import type { FileMap } from '~/types/workbench-files';
 
 const logger = createScopedLogger('FilesStore');
 
 const utf8TextDecoder = new TextDecoder('utf8', { fatal: true });
 
-export interface File {
-  type: 'file';
-  content: string;
-  isBinary: boolean;
-}
+// export interface File {
+//   type: 'file';
+//   content: string;
+//   isBinary: boolean;
+// }
 
-export interface Folder {
-  type: 'folder';
-}
+// export interface Folder {
+//   type: 'folder';
+// }
 
-type Dirent = File | Folder;
+// type Dirent = File | Folder;
 
-export type FileMap = Record<string, Dirent | undefined>;
+// export type FileMap = Record<string, Dirent | undefined>;
 
 export class FilesStore {
   #webcontainer: Promise<WebContainer>;

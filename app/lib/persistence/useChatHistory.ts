@@ -1,7 +1,7 @@
 import { useLoaderData, useNavigate, useSearchParams } from '@remix-run/react';
 import { useState, useEffect } from 'react';
 import { atom } from 'nanostores';
-import type { Message } from 'ai';
+import type { Message } from '~/types/message';
 import { toast } from 'react-toastify';
 import { workbenchStore } from '~/lib/stores/workbench';
 import { logStore } from '~/lib/stores/logs'; // Import logStore
@@ -14,6 +14,8 @@ import {
   duplicateChat,
   createChatFromMessages,
 } from './db';
+import type { Project } from '~/types/project';
+import { getMessagesByRepositoryName, getProjectByRepositoryName } from '../appwrite';
 
 export interface ChatHistoryItem {
   id: string;
@@ -34,45 +36,71 @@ export function useChatHistory() {
   const navigate = useNavigate();
   const { id: mixedId } = useLoaderData<{ id?: string }>();
   const [searchParams] = useSearchParams();
+  const [project, setProject] = useState<Project>();
+  const [repositoryName, setRepositoryName] = useState<string | undefined>();
 
   const [initialMessages, setInitialMessages] = useState<Message[]>([]);
   const [ready, setReady] = useState<boolean>(false);
   const [urlId, setUrlId] = useState<string | undefined>();
 
   useEffect(() => {
-    if (!db) {
-      setReady(true);
+    // if (!db) {
+    //   setReady(true);
 
-      if (persistenceEnabled) {
-        const error = new Error('Chat persistence is unavailable');
-        logStore.logError('Chat persistence initialization failed', error);
-        toast.error('Chat persistence is unavailable');
-      }
+    //   if (persistenceEnabled) {
+    //     const error = new Error('Chat persistence is unavailable');
+    //     logStore.logError('Chat persistence initialization failed', error);
+    //     toast.error('Chat persistence is unavailable');
+    //   }
 
-      return;
-    }
+    //   return;
+    // }
 
     if (mixedId) {
-      getMessages(db, mixedId)
-        .then((storedMessages) => {
-          if (storedMessages && storedMessages.messages.length > 0) {
-            const rewindId = searchParams.get('rewindTo');
-            const filteredMessages = rewindId
-              ? storedMessages.messages.slice(0, storedMessages.messages.findIndex((m) => m.id === rewindId) + 1)
-              : storedMessages.messages;
+      // getMessages(db, mixedId)
+      //   .then((storedMessages) => {
+      //     if (storedMessages && storedMessages.messages.length > 0) {
+      //       const rewindId = searchParams.get('rewindTo');
+      //       const filteredMessages = rewindId
+      //         ? storedMessages.messages.slice(0, storedMessages.messages.findIndex((m) => m.id === rewindId) + 1)
+      //         : storedMessages.messages;
 
-            setInitialMessages(filteredMessages);
-            setUrlId(storedMessages.urlId);
-            description.set(storedMessages.description);
-            chatId.set(storedMessages.id);
-          } else {
-            navigate('/', { replace: true });
-          }
+      //       setInitialMessages(filteredMessages);
+      //       setUrlId(storedMessages.urlId);
+      //       description.set(storedMessages.description);
+      //       chatId.set(storedMessages.id);
+      //     } else {
+      //       navigate('/', { replace: true });
+      //     }
 
-          setReady(true);
+      //     setReady(true);
+      //   })
+      //   .catch((error) => {
+      //     logStore.logError('Failed to load chat messages', error);
+      //     toast.error(error.message);
+      //   });
+
+      getProjectByRepositoryName(mixedId)
+        .then((project) => {
+          setProject(project);
+          getMessagesByRepositoryName(project.repositoryName)
+            .then((storedMessages) => {
+              if (storedMessages && storedMessages.length > 0) {
+                setInitialMessages(storedMessages);
+                setRepositoryName(mixedId);
+                description.set(project.name);
+                chatId.set(storedMessages[0].content);
+              } else {
+                navigate(`/`, { replace: true });
+              }
+
+              setReady(true);
+            })
+            .catch((error) => {
+              toast.error(error.message);
+            });
         })
         .catch((error) => {
-          logStore.logError('Failed to load chat messages', error);
           toast.error(error.message);
         });
     }
@@ -81,35 +109,39 @@ export function useChatHistory() {
   return {
     ready: !mixedId || ready,
     initialMessages,
-    storeMessageHistory: async (messages: Message[]) => {
-      if (!db || messages.length === 0) {
-        return;
-      }
+    storeMessageHistory: async ( project: Project) => {
+      navigateChat(project.repositoryName);
+      setRepositoryName(project.repositoryName);
+      setProject(project);
 
-      const { firstArtifact } = workbenchStore;
+      // if (!db || messages.length === 0) {
+      //   return;
+      // }
 
-      if (!urlId && firstArtifact?.id) {
-        const urlId = await getUrlId(db, firstArtifact.id);
+      // const { firstArtifact } = workbenchStore;
 
-        navigateChat(urlId);
-        setUrlId(urlId);
-      }
+      // if (!urlId && firstArtifact?.id) {
+      //   const urlId = await getUrlId(db, firstArtifact.id);
 
-      if (!description.get() && firstArtifact?.title) {
-        description.set(firstArtifact?.title);
-      }
+      //   navigateChat(urlId);
+      //   setUrlId(urlId);
+      // }
 
-      if (initialMessages.length === 0 && !chatId.get()) {
-        const nextId = await getNextId(db);
+      // if (!description.get() && firstArtifact?.title) {
+      //   description.set(firstArtifact?.title);
+      // }
 
-        chatId.set(nextId);
+      // if (initialMessages.length === 0 && !chatId.get()) {
+      //   const nextId = await getNextId(db);
 
-        if (!urlId) {
-          navigateChat(nextId);
-        }
-      }
+      //   chatId.set(nextId);
 
-      await setMessages(db, chatId.get() as string, messages, urlId, description.get());
+      //   if (!urlId) {
+      //     navigateChat(nextId);
+      //   }
+      // }
+
+      // await setMessages(db, chatId.get() as string, messages, urlId, description.get());
     },
     duplicateCurrentChat: async (listItemId: string) => {
       if (!db || (!mixedId && !listItemId)) {
@@ -164,6 +196,7 @@ export function useChatHistory() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     },
+    project,
   };
 }
 

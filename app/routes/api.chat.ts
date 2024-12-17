@@ -1,9 +1,16 @@
 import { type ActionFunctionArgs } from '@remix-run/cloudflare';
+import { createMessageDocument, createProjectDocument, validateAuthHeaders } from '~/lib/.server/appwrite-server';
 import { MAX_RESPONSE_SEGMENTS, MAX_TOKENS } from '~/lib/.server/llm/constants';
 import { CONTINUE_PROMPT } from '~/lib/.server/llm/prompts';
 import { streamText, type Messages, type StreamingOptions } from '~/lib/.server/llm/stream-text';
 import SwitchableStream from '~/lib/.server/llm/switchable-stream';
 import type { IProviderSetting } from '~/types/model';
+import { faker } from '@faker-js/faker';
+import Case from 'case';
+import axios from 'axios';
+import type { GitRepository } from '~/types/git-repository';
+import type { GitCredentials } from '~/types/git-credentials';
+const giteaBaseUrl = process.env.GITEA_BASE_URL;
 
 export async function action(args: ActionFunctionArgs) {
   return chatAction(args);
@@ -29,10 +36,72 @@ function parseCookies(cookieHeader: string) {
   return cookies;
 }
 
+const listGitReposByCurrentUser = async (gitCredentials: GitCredentials): Promise<Array<GitRepository>> => {
+  let response = await axios.get(`${giteaBaseUrl}/api/v1/user/repos?page=1&limit=500`, {
+    auth: {
+      username: gitCredentials.username,
+      password: gitCredentials.password,
+    },
+  });
+  return response.data;
+};
+
+const createGitRepoForCurrentUser = async (
+  repoName: string,
+  gitCredentials: GitCredentials,
+): Promise<GitRepository> => {
+  let response = await axios.post(
+    `${giteaBaseUrl}/api/v1/user/repos`,
+    {
+      name: repoName,
+      default_branch: 'main',
+    },
+    {
+      auth: {
+        username: gitCredentials.username,
+        password: gitCredentials.password,
+      },
+    },
+  );
+  return response.data;
+};
+
+const getOrCreateGitRepo = async (projectName: string, gitCredentials: GitCredentials) => {
+  if (!projectName) {
+    projectName = faker.internet.domainWord();
+    console.log('No project name found, generating fake project name: ', projectName);
+  }
+  const repoName = Case.kebab(projectName);
+  const existingRepos = await listGitReposByCurrentUser(gitCredentials);
+  let projectRepo = existingRepos.find((repo) => repo.name === repoName);
+  if (!projectRepo) {
+    projectRepo = await createGitRepoForCurrentUser(repoName, gitCredentials);
+  }
+  return projectRepo;
+};
+
 async function chatAction({ context, request }: ActionFunctionArgs) {
-  const { messages, files } = await request.json<{
+  const { prefs, user } = await validateAuthHeaders(request);
+
+  let gitCredentials: GitCredentials | undefined;
+
+  try {
+    gitCredentials = JSON.parse(prefs['gitCredentials']);
+  } catch (error) {
+    console.log("Error parsing git credentials from user's prefs", error);
+  }
+
+  if (!gitCredentials) {
+    throw new Response(null, {
+      status: 500,
+      statusText: 'Internal Server Error',
+    });
+  }
+
+  const { messages, files, projectName } = await request.json<{
     messages: Messages;
     files: any;
+    projectName: string;
   }>();
 
   const cookieHeader = request.headers.get('Cookie');
@@ -43,12 +112,27 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
     parseCookies(cookieHeader || '').providers || '{}',
   );
 
+  const gitRepository = await getOrCreateGitRepo(projectName, gitCredentials);
+
+  const project = await createProjectDocument(projectName, gitRepository.name, user.$id);
+
   const stream = new SwitchableStream();
 
+  messages.forEach(async (message) => {
+    await createMessageDocument(message.role, message.content, project.$id, user.$id);
+  });
+
   try {
-    const options: StreamingOptions = {
+    const options: StreamingOptions & {
+      apiKeys: unknown;
+      project: unknown;
+    } = {
       toolChoice: 'none',
+      apiKeys,
+      project,
       onFinish: async ({ text: content, finishReason }) => {
+        await createMessageDocument('assistant', content, project.$id, user.$id);
+
         if (finishReason !== 'length') {
           return stream.close();
         }
@@ -92,6 +176,8 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
       status: 200,
       headers: {
         contentType: 'text/plain; charset=utf-8',
+        projectId: project.$id,
+        repositoryName: project.repositoryName,
       },
     });
   } catch (error: any) {

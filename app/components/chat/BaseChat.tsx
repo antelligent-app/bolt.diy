@@ -2,7 +2,7 @@
  * @ts-nocheck
  * Preventing TS checks with files presented in the video for a better presentation.
  */
-import type { Message } from 'ai';
+import type { Message } from '~/types/message';
 import React, { type RefCallback, useEffect, useState } from 'react';
 import { ClientOnly } from 'remix-utils/client-only';
 import { Menu } from '~/components/sidebar/Menu.client';
@@ -26,6 +26,7 @@ import FilePreview from './FilePreview';
 import { ModelSelector } from '~/components/chat/ModelSelector';
 import { SpeechRecognitionButton } from '~/components/chat/SpeechRecognition';
 import type { IProviderSetting, ProviderInfo } from '~/types/model';
+import type { Project } from '~/types/project';
 
 const TEXTAREA_MIN_HEIGHT = 76;
 
@@ -56,6 +57,9 @@ interface BaseChatProps {
   setUploadedFiles?: (files: File[]) => void;
   imageDataList?: string[];
   setImageDataList?: (dataList: string[]) => void;
+  projectName?: string,
+  setProjectName?: React.Dispatch<React.SetStateAction<string>>,
+  project?: Project
 }
 
 export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
@@ -86,6 +90,9 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
       imageDataList = [],
       setImageDataList,
       messages,
+      projectName,
+      setProjectName,
+      project
     },
     ref,
   ) => {
@@ -343,6 +350,25 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                   <rect className={classNames(styles.PromptEffectLine)} pathLength="100" strokeLinecap="round"></rect>
                   <rect className={classNames(styles.PromptShine)} x="48" y="24" width="70" height="1"></rect>
                 </svg>
+
+                <div
+                  className={classNames(
+                    'mb-5 shadow-lg border border-bolt-elements-borderColor bg-bolt-elements-prompt-background backdrop-filter backdrop-blur-[8px] rounded-lg overflow-hidden transition-all',
+                  )}
+                >
+                  <input
+                    value={projectName}
+                    onChange={(event) => {
+                      setProjectName?.(event.target.value)
+                    }}
+                    disabled={!!project}
+                    type='text'
+                    placeholder="Project Name"
+                    id='projectName'
+                    name='projectName'
+                    className={`w-full pl-4 py-4 focus:outline-none focus:ring-2 focus:ring-bolt-elements-focus resize-none text-md text-bolt-elements-textPrimary placeholder-bolt-elements-textTertiary bg-transparent transition-all`}
+                  />
+                </div>
                 <div>
                   <div className={isModelSettingsCollapsed ? 'hidden' : ''}>
                     <ModelSelector
@@ -425,7 +451,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                         }
 
                         event.preventDefault();
-                        
+
                         if (isStreaming) {
                           handleStop?.();
                           return;
@@ -531,12 +557,12 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                 </div>
               </div>
             </div>
-            {!chatStarted && (
+            {/* {!chatStarted && (
               <div className="flex justify-center gap-2">
                 {ImportButtons(importChat)}
                 <GitCloneButton importChat={importChat} />
               </div>
-            )}
+            )} */}
             {!chatStarted &&
               ExamplePrompts((event, messageInput) => {
                 if (isStreaming) {
@@ -547,7 +573,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                 handleSendMessage?.(event, messageInput);
               })}
           </div>
-          <ClientOnly>{() => <Workbench chatStarted={chatStarted} isStreaming={isStreaming} />}</ClientOnly>
+          <ClientOnly>{() => <Workbench messages={messages} chatStarted={chatStarted} isStreaming={isStreaming}  project={project}  />}</ClientOnly>
         </div>
       </div>
     );

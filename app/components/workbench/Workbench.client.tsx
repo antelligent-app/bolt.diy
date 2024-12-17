@@ -18,10 +18,18 @@ import { EditorPanel } from './EditorPanel';
 import { Preview } from './Preview';
 import useViewport from '~/lib/hooks';
 import Cookies from 'js-cookie';
+import { getAccountClient } from '~/lib/appwrite';
+import axios from 'axios';
+import type { CommitInfo } from '~/types/commits';
+import type { FileMap } from '~/types/workbench-files';
+import type { Project } from '~/types/project';
+import type { Message } from '~/types/message';
 
 interface WorkspaceProps {
   chatStarted?: boolean;
   isStreaming?: boolean;
+  project?: Project;
+  messages?: Message[];
 }
 
 const viewTransition = { ease: cubicEasingFn };
@@ -54,7 +62,7 @@ const workbenchVariants = {
   },
 } satisfies Variants;
 
-export const Workbench = memo(({ chatStarted, isStreaming }: WorkspaceProps) => {
+export const Workbench = memo(({ chatStarted, isStreaming, project, messages }: WorkspaceProps) => {
   renderLogger.trace('Workbench');
 
   const [isSyncing, setIsSyncing] = useState(false);
@@ -68,6 +76,85 @@ export const Workbench = memo(({ chatStarted, isStreaming }: WorkspaceProps) => 
   const selectedView = useStore(workbenchStore.currentView);
 
   const isSmallViewport = useViewport(1024);
+  const [commits, setCommits] = useState<CommitInfo[]>([]);
+  const [repositoryDirents, setRepositoryDirents] = useState<FileMap>({});
+
+
+  const fetchLatestCommits = async (projectRepositoryName: string) => {
+    const authToken = (await getAccountClient().createJWT()).jwt;
+    try {
+      const response = await axios.get('/api/repositories/commits?projectRepositoryName=' + projectRepositoryName, {
+        headers: {
+          Authorization: `Bearer ${authToken}`
+        },
+      });
+      setCommits(response.data.commits);
+      console.log("commits =", response.data);
+    } catch (error) {
+      console.error('Error fetching commits: ', error);
+    }
+  }
+
+  const fetchLatestDirents = async (projectRepositoryName: string) => {
+    const authToken = (await getAccountClient().createJWT()).jwt;
+    try {
+      const response = await axios.get('/api/repositories/dirents?projectRepositoryName=' + projectRepositoryName, {
+        headers: {
+          Authorization: `Bearer ${authToken}`
+        },
+      });
+      setRepositoryDirents(response.data);
+      if (messages && messages[1]) {
+        if (Object.keys(response.data).length > 0) {
+          if (Object.keys(response.data).length > 0) {
+            workbenchStore.createFilesFromGitRepo(response.data, messages[1].id);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching dirents: ', error);
+    }
+  }
+
+  useEffect(() => {
+    if (!project) {
+      console.error('Project not found');
+      return;
+    }
+    fetchLatestCommits(project?.repositoryName);
+  }, [project])
+
+  const pullFromGit = useCallback(() => {
+    if (!project) {
+      console.error('Project not found');
+      return;
+    }
+    fetchLatestDirents(project?.repositoryName);
+  }, [project])
+
+  const hasUnsavedChangesForProject = () => {
+    if (commits.length === 0) {
+      return true;
+    }
+    if (repositoryDirents) {
+      for (const key in files) {
+        if (Object.prototype.hasOwnProperty.call(files, key)) {
+          const editorFile = files[key];
+          const repositoryFile = repositoryDirents[key];
+          if (editorFile?.type === "file" && repositoryFile?.type === "file") {
+            if (editorFile.content !== repositoryFile.content) {
+              return true;
+            }
+          }
+        }
+      }
+    }
+    return false;
+  }
+
+  const hasUnfetchedChangesFromProject = () => {
+    return (commits.length > 0 && Object.keys(repositoryDirents).length === 0);
+  }
 
   const setSelectedView = (view: WorkbenchViewType) => {
     workbenchStore.currentView.set(view);
@@ -168,6 +255,36 @@ export const Workbench = memo(({ chatStarted, isStreaming }: WorkspaceProps) => 
                       <div className="i-ph:terminal" />
                       Toggle Terminal
                     </PanelHeaderButton>
+
+                    <PanelHeaderButton
+                      className="mr-1 text-sm"
+                      onClick={async () => {
+                        if (!project) {
+                          throw new Error('Project not found');
+                        };
+                        await workbenchStore.pushToGit(project.repositoryName)
+                        fetchLatestDirents(project.repositoryName);
+                      }}
+                      disabled={hasUnfetchedChangesFromProject()}
+                    >
+                      <div className="i-ph:box-arrow-up" />
+                      Save to project
+                      {hasUnsavedChangesForProject() ? <span className="i-ph:circle-fill scale-68 shrink-0 text-orange-500"></span> : <></>}
+                    </PanelHeaderButton>
+                    <PanelHeaderButton
+                      className="mr-1 text-sm"
+                      onClick={async () => {
+                        if (!project) {
+                          throw new Error('Project not found');
+                        };
+                        pullFromGit()
+                      }}
+                      disabled={commits.length === 0}
+                    >
+                      <div className="i-ph:box-arrow-down" />
+                      Fetch from project
+                      {hasUnfetchedChangesFromProject() ? <span className="i-ph:circle-fill scale-68 shrink-0 text-orange-500"></span> : <></>}
+                    </PanelHeaderButton>
                     <PanelHeaderButton
                       className="mr-1 text-sm"
                       onClick={() => {
@@ -199,8 +316,9 @@ export const Workbench = memo(({ chatStarted, isStreaming }: WorkspaceProps) => 
                         }
                       }}
                     >
-                      <div className="i-ph:github-logo" />
-                      Push to GitHub
+                      <div className="i-ph:floppy-disk" />
+                      Save to project
+                      <span className="i-ph:circle-fill scale-68 shrink-0 text-orange-500"></span>
                     </PanelHeaderButton>
                   </div>
                 )}
