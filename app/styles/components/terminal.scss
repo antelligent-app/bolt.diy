@@ -1,3 +1,128 @@
 .xterm {
   padding: 1rem;
 }
+a, a:visited , .hoverLink {
+  color: var(--link-color);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+a:hover, .hoverLink:hover {
+  color: var(--link-hover-color);
+  text-decoration: underline;
+}
+
+.old-prompt {
+  color: var(--dim-text-color);
+}
+
+*:hover > .noHover,
+*:not(:hover) > .onHover {
+  display: none;
+}
+
+button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  color: var(--button-color);
+}
+
+button:hover, span.cwd:hover {
+  color: var(--button-hover-color);
+}
+
+button:hover::before {
+  content: ">";
+  float: left;
+  margin-left: -0.75em;
+}
+
+.fullname {
+  color: var(--dim-text-color);
+}
+
+.typedLine {
+  white-space: pre-wrap;
+  /* mask-image: linear-gradient(to right, black 50%, transparent 55%); */
+  animation: reveal 200ms linear forwards;
+  mask-position: 0%;
+  mask-size: 200%;
+  max-width: 34em;
+}
+
+@keyframes reveal {
+  from { mask-position: 100% 100%; }
+  to { mask-position: 0% 0%; }
+}
+
+
+.username {
+  min-width: 8em;
+  display: inline-block;
+  text-align: left;
+}
+
+.terminal {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  box-sizing: border-box;
+  transition: transform 1.15s 0.15s cubic-bezier(0.5,0,.82,1.0);
+  transform-origin: bottom left;
+}
+
+.terminal p {
+  margin-top:0;
+}
+
+.terminal p.old-prompt {
+  margin-top:1em;
+}
+body.loading .terminal {
+  transform:scale(1.0)  ;
+}
+
+#prompt {
+  margin-top: 1em;
+  cursor: pointer;
+}
+
+.inputText {
+  white-space: pre-wrap;
+}
+
+.directory {
+  color: var(--text-color);
+}
+
+.hoverText {
+  color: var(--dim-text-color);
+}
+
+.inputText {
+  color: var(--text-color);
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  border: none;
+  background: transparent;
+  // caret-color: transparent;
+  caret-shape: underscore;
+  caret-color: var(--text-color);
+  padding: 0;
+  // padding-left: 1.2ch;
+  border-radius: 0;
+  max-width: 100%;
+}
+
+.inputText:focus {
+  outline: none;
+  /* border-bottom: 1px solid var(--dim-text-color); */
+}
+
+.inputText::hover {
+  border-bottom: 1px solid var(--dim-text-color);
+}

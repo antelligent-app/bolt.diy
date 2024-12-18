@@ -15,7 +15,7 @@ import { SendButton } from './SendButton.client';
 import { APIKeyManager } from './APIKeyManager';
 import Cookies from 'js-cookie';
 import * as Tooltip from '@radix-ui/react-tooltip';
-
+import { useLoaderData } from '@remix-run/react';
 import styles from './BaseChat.module.scss';
 import { ExportChatButton } from '~/components/chat/chatExportAndImport/ExportChatButton';
 import { ImportButtons } from '~/components/chat/chatExportAndImport/ImportButtons';
@@ -29,6 +29,7 @@ import type { IProviderSetting, ProviderInfo } from '~/types/model';
 import type { Project } from '~/types/project';
 import { ScreenshotStateManager } from './ScreenshotStateManager';
 import { toast } from 'react-toastify';
+import { getAccountClient } from '~/lib/appwrite';
 
 const TEXTAREA_MIN_HEIGHT = 76;
 
@@ -119,6 +120,46 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
     const [isListening, setIsListening] = useState(false);
     const [recognition, setRecognition] = useState<SpeechRecognition | null>(null);
     const [transcript, setTranscript] = useState('');
+    const [providerKeys, setProviderKeys] = useState<Record<string, string>>({});
+
+    const fetchUserPreferrences = async () => {
+      const preferrences = await getAccountClient().getPrefs();
+      console.log("preferrences =", preferrences);
+      if (preferrences['providerKeys']) {
+        try {
+          const providerKeys = JSON.parse(preferrences['providerKeys']);
+          // if OpenAI is exist in providerKeys, do something
+          if (providerKeys['OpenAI']) {
+            console.log('OpenAI key is exist1');
+            setProvider?.('OpenAI');
+            setModel?.('gpt-4o');
+          }
+
+          setProviderKeys(JSON.parse(preferrences['providerKeys']))
+        } catch (error) {
+          console.error('Error parsing providerKeys preferrence');
+        }
+      }
+    }
+
+    const updateUserPreferrence = async () => {
+      // update providerKeys if there is key value pair exist
+      if (Object.keys(providerKeys).length === 0) return;
+      const preferrences = await getAccountClient().getPrefs();
+      await getAccountClient().updatePrefs({
+        ...preferrences,
+        providerKeys: JSON.stringify(providerKeys)
+      })
+    }
+
+    useEffect(() => {
+      fetchUserPreferrences();
+    }, [])
+    useEffect(() => {
+      updateUserPreferrence();
+    }, [providerKeys])
+
+    const { isCodeMode } = useLoaderData<{ isCodeMode?: boolean }>();
 
     useEffect(() => {
       console.log(transcript);
@@ -286,12 +327,14 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
     const baseChat = (
       <div
         ref={ref}
-        className={classNames(styles.BaseChat, 'relative flex h-full w-full overflow-hidden')}
+        className={classNames(styles.BaseChat, 'relative flex h-full w-full overflow-hidden' + (isCodeMode ? '' : 'bg-bolt-elements-background-depth-1'))}
         data-chat-visible={showChat}
       >
-        <ClientOnly>{() => <Menu />}</ClientOnly>
+        {!isCodeMode &&
+          <ClientOnly>{() => <Menu />}</ClientOnly>
+        }
         <div ref={scrollRef} className="flex flex-col lg:flex-row overflow-y-auto w-full h-full">
-          <div className={classNames(styles.Chat, 'flex flex-col flex-grow lg:min-w-[var(--chat-min-width)] h-full')}>
+          <div className={classNames(styles.Chat, 'flex flex-col flex-grow lg:min-w-[var(--chat-min-width)] h-full' + `${isCodeMode ? "hidden" : "flex"}`)}>
             {!chatStarted && (
               <div id="intro" className="mt-[16vh] max-w-chat mx-auto text-center px-4 lg:px-0">
                 <h1 className="text-3xl lg:text-6xl font-bold text-bolt-elements-textPrimary mb-4 animate-fade-in">
@@ -579,7 +622,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                 handleSendMessage?.(event, messageInput);
               })}
           </div>
-          <ClientOnly>{() => <Workbench messages={messages} chatStarted={chatStarted} isStreaming={isStreaming}  project={project}  />}</ClientOnly>
+          <ClientOnly>{() => <Workbench messages={messages} chatStarted={chatStarted} isStreaming={isStreaming} project={project} />}</ClientOnly>
         </div>
       </div>
     );

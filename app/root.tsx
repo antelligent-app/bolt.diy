@@ -12,7 +12,7 @@ import globalStyles from './styles/index.scss?url';
 import xtermStyles from '@xterm/xterm/css/xterm.css?url';
 
 import { logStore } from './lib/stores/logs';
-import { getDatabaseId, getMessagesCollectionId, getProjectsCollectionId } from './lib/.server/appwrite-server';
+import { getDatabaseId, getMessagesCollectionId, getProjectsCollectionId , getProjectsTagsCollectionId} from './lib/.server/appwrite-server';
 
 import 'virtual:uno.css';
 
@@ -21,12 +21,14 @@ export const loader = async () => {
   let APPWRITE_DATABASE_ID;
   let APPWRITE_PROJECTS_COLLECTION_ID;
   let APPWRITE_MESSAGES_COLLECTION_ID;
+  let APPWRITE_TAGS_COLLECTION_ID;
   const APPWRITE_PROJECT = process.env.APPWRITE_PROJECT;
   const GITEA_BASE_URL = process.env.GITEA_BASE_URL;
   try {
     APPWRITE_DATABASE_ID = await getDatabaseId()
     APPWRITE_PROJECTS_COLLECTION_ID = await getProjectsCollectionId()
     APPWRITE_MESSAGES_COLLECTION_ID = await getMessagesCollectionId()
+    APPWRITE_TAGS_COLLECTION_ID = await getProjectsTagsCollectionId()
   } catch (error) {
     console.log('Error fetching apppwrite database details: ', error);
   }
@@ -37,6 +39,7 @@ export const loader = async () => {
       APPWRITE_MESSAGES_COLLECTION_ID,
       APPWRITE_PROJECT,
       GITEA_BASE_URL,
+      APPWRITE_TAGS_COLLECTION_ID
     }
   });
 };
@@ -101,6 +104,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     document.querySelector('html')?.setAttribute('data-appwrite-database-id', data.ENV.APPWRITE_DATABASE_ID || '');
     document.querySelector('html')?.setAttribute('data-appwrite-projects-collection-id', data.ENV.APPWRITE_PROJECTS_COLLECTION_ID || '');
     document.querySelector('html')?.setAttribute('data-appwrite-messages-collection-id', data.ENV.APPWRITE_MESSAGES_COLLECTION_ID || '');
+    document.querySelector('html')?.setAttribute('data-appwrite-tags-collection-id', data.ENV.APPWRITE_TAGS_COLLECTION_ID || '');
     document.querySelector('html')?.setAttribute('data-gitea-base-url', data.ENV.GITEA_BASE_URL || '');
   }, [theme]);
 

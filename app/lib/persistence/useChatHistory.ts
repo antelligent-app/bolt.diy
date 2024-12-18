@@ -98,10 +98,12 @@ export function useChatHistory() {
             })
             .catch((error) => {
               toast.error(error.message);
+              setReady(true);
             });
         })
         .catch((error) => {
           toast.error(error.message);
+          setReady(true);
         });
     }
   }, []);
@@ -109,7 +111,7 @@ export function useChatHistory() {
   return {
     ready: !mixedId || ready,
     initialMessages,
-    storeMessageHistory: async ( project: Project) => {
+    storeMessageHistory: async (project: Project) => {
       navigateChat(project.repositoryName);
       setRepositoryName(project.repositoryName);
       setProject(project);

@@ -92,6 +92,7 @@
     "js-cookie": "^3.0.5",
     "jsonpath": "^1.1.1",
     "jszip": "^3.10.1",
+    "lucide-react": "^0.468.0",
     "nanostores": "^0.10.3",
     "node-appwrite": "^14.1.0",
     "ollama-ai-provider": "^0.15.2",

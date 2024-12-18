@@ -1,0 +1,59 @@
+
+
+
+#geist {
+    cursor: pointer;
+  }
+  
+  #geist {
+    stroke-width: 2;
+    height: 1.5em;
+    width: 1.5em;
+    display: inline-block;
+    vertical-align: bottom;
+    transform: translateY(-0.19em);
+  }
+  
+  #geist.waiting path {
+    stroke: var(--vermillion);
+    fill: none;
+    animation: cursor-pulse 1s infinite
+  }
+  
+  #geist:hover,
+  #geist.outputting {  
+    stroke: var(--vermillion);
+    path {
+      fill: var(--vermillion);
+    }
+  }
+  
+  #geist.autocompleting {  
+    stroke: var(--vermillion);
+    path {
+      fill: var(--vermillion);
+    }
+  }
+  
+  
+  #geist.inputting {  
+    stroke: var(--dim-text-color);
+    /* scale: 0.5; */
+  }
+  
+  @keyframes cursor-pulse {
+      0% {
+        opacity: 1.0;
+      }
+  
+      50% {
+        opacity: 0.5;
+      }
+      100% {
+        opacity: 1.0;
+      }
+    
+    }
+  
+  svg.terminal {
+  }

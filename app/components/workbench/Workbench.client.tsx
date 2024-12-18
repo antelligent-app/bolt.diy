@@ -24,7 +24,7 @@ import type { CommitInfo } from '~/types/commits';
 import type { FileMap } from '~/types/workbench-files';
 import type { Project } from '~/types/project';
 import type { Message } from '~/types/message';
-
+import { useLoaderData } from '@remix-run/react';
 interface WorkspaceProps {
   chatStarted?: boolean;
   isStreaming?: boolean;
@@ -207,6 +207,8 @@ export const Workbench = memo(({ chatStarted, isStreaming, project, messages }: 
     }
   }, []);
 
+  const { isCodeMode } = useLoaderData<{ isCodeMode?: boolean }>();
+  
   return (
     chatStarted && (
       <motion.div
@@ -228,11 +230,20 @@ export const Workbench = memo(({ chatStarted, isStreaming, project, messages }: 
         >
           <div className="absolute inset-0 px-2 lg:px-6">
             <div className="h-full flex flex-col bg-bolt-elements-background-depth-2 border border-bolt-elements-borderColor shadow-sm rounded-lg overflow-hidden">
-              <div className="flex items-center px-3 py-2 border-b border-bolt-elements-borderColor">
+              <div className={"flex items-center px-3 py-2 border-b border-bolt-elements-borderColor"  + (isCodeMode ? "hidden" : "flex")}>
                 <Slider selected={selectedView} options={sliderOptions} setSelected={setSelectedView} />
                 <div className="ml-auto" />
                 {selectedView === 'code' && (
                   <div className="flex overflow-y-auto">
+                    <PanelHeaderButton
+                      className="mr-1 text-sm"
+                      onClick={() => {
+                        console.log("Add Tags");
+                      }}
+                    >
+                      <div className="i-ph:tag" />
+                      Add Tags
+                    </PanelHeaderButton>
                     <PanelHeaderButton
                       className="mr-1 text-sm"
                       onClick={() => {
@@ -335,6 +346,7 @@ export const Workbench = memo(({ chatStarted, isStreaming, project, messages }: 
                 <View
                   initial={{ x: selectedView === 'code' ? 0 : '-100%' }}
                   animate={{ x: selectedView === 'code' ? 0 : '-100%' }}
+                  className={isCodeMode ? "hidden" : ""}
                 >
                   <EditorPanel
                     editorDocument={currentDocument}

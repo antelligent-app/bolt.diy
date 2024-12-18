@@ -1,4 +1,5 @@
 import { Account, Client, Databases, ID, Permission, RelationshipType, Role, Users } from 'node-appwrite';
+import type { Tags } from '~/types/message';
 import type { Project } from '~/types/project';
 
 const client = new Client();
@@ -98,6 +99,22 @@ export const getMessagesCollectionId = async () => {
   }
   return projectsCollection.$id;
 }
+export const getProjectsTagsCollectionId = async () => {
+  const projectsCollection = await getCollectionByName('tags');
+  const projectsCollectionId = await getProjectsCollectionId();
+
+  if (projectsCollection.attributes.findIndex((attribute: any) => attribute.key === 'project') === -1) {
+    await databases.createRelationshipAttribute(projectsCollection.databaseId, projectsCollection.$id, projectsCollectionId, RelationshipType.ManyToMany, true, 'project', 'tags');
+  }
+  if (projectsCollection.attributes.findIndex((attribute: any) => attribute.key === 'name') === -1) {
+    await databases.createStringAttribute(projectsCollection.databaseId, projectsCollection.$id, 'name', 1024, true);
+  }
+  if (projectsCollection.attributes.findIndex((attribute: any) => attribute.key === 'userCanUseThisTag') === -1) {
+    await databases.createBooleanAttribute(projectsCollection.databaseId, projectsCollection.$id, 'userCanUseThisTag', true);
+  }
+  return projectsCollection.$id;
+}
+
 
 export const createMessageDocument = async (role: 'user' | 'assistant', content: string, projectId: string, userId: string) => {
   const message = await databases.createDocument(await getDatabaseId(), await getMessagesCollectionId(), ID.unique(), {
@@ -124,4 +141,97 @@ export const createProjectDocument = async (name: string, repositoryName: string
     Permission.delete(Role.user(userId))
   ]);
   return project;
+}
+
+
+export const updateProjectTags = async (projectId: string, userId: string, tagNames: string[]) => {
+  const databaseId = await getDatabaseId();
+  const tagsCollectionId = await getProjectsTagsCollectionId();
+  const allTags = await databases.listDocuments<Tags>(databaseId, tagsCollectionId);
+
+  const user = await users.get(userId);
+
+  if (!user) {
+    throw new Error('User not found');
+  }
+
+  const tags = tagNames.map((name) => {
+    const existingTag = allTags.documents.find((t) => t.name === name);
+    if (existingTag) {
+      return existingTag;
+    }
+  });
+
+  if (tags.length === 0) {
+    return [];
+  }
+
+  if(user.labels.includes('admin')) {
+    const tagIds = tags.map((tag) => {
+      if (tag) {
+        return tag.$id;
+      }
+    });
+    const project = await databases.updateDocument<Project>(await getDatabaseId(), await getProjectsCollectionId(), projectId, {
+      userId,
+      tags: tagIds
+    }, [
+      Permission.read(Role.user(userId)),
+      Permission.update(Role.user(userId)),
+      Permission.delete(Role.user(userId))
+    ]);
+    return project;
+  } 
+
+  // only allow tags that the user can use
+  const tagIds = tags.map((tag) => {
+    if (tag && tag.userCanUseThisTag) {
+      return tag.$id;
+    }
+  });
+
+  if (tagIds.length === 0) {
+    return [];
+  }
+
+  const project = await databases.updateDocument<Project>(await getDatabaseId(), await getProjectsCollectionId(), projectId, {
+    userId,
+    tags: tagIds
+  }, [
+    Permission.read(Role.user(userId)),
+    Permission.update(Role.user(userId)),
+    Permission.delete(Role.user(userId))
+  ]);
+
+  return project;
+}
+
+export const createTagDocument = async ({
+  name, 
+  userId, 
+  userCanUseThisTag = false,
+  projectId 
+}: {
+    name: string;
+    userId: string;
+    userCanUseThisTag: boolean;
+    projectId?: string;
+  }
+) => {
+  const tag = await databases.createDocument<Tags>(await getDatabaseId(), await getProjectsTagsCollectionId(), ID.unique(), {
+    name,
+    project: projectId,
+    userCanUseThisTag: userCanUseThisTag
+  }, [
+    Permission.read(Role.any()),
+    Permission.update(Role.label('admin')),
+    Permission.delete(Role.label('admin'))
+  ]);
+  return tag;
+}
+
+export const getTagsByNames = async (tags: string[]) => {
+  const tagsCollectionId = await getProjectsTagsCollectionId();
+  const allTags = await databases.listDocuments<Tags>(await getDatabaseId(), tagsCollectionId);
+  return allTags.documents.filter((tag) => tags.includes(tag.name));
 }

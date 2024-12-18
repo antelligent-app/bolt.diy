@@ -6,7 +6,7 @@ import { useStore } from '@nanostores/react';
 import type { Message } from '~/types/message';
 import { useChat } from 'ai/react';
 import { useAnimate } from 'framer-motion';
-import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useImperativeHandle, useRef, useState, forwardRef } from 'react';
 import { cssTransition, toast, ToastContainer } from 'react-toastify';
 import { useMessageParser, usePromptEnhancer, useShortcuts, useSnapScroll } from '~/lib/hooks';
 import { description, useChatHistory } from '~/lib/persistence';
@@ -31,7 +31,15 @@ const toastAnimation = cssTransition({
 
 const logger = createScopedLogger('Chat');
 
-export function Chat() {
+export function Chat({
+  cmdPrompt,
+  sendMszref,
+}: {
+  cmdPrompt?: string,
+  sendMszref?: React.MutableRefObject<{
+    sendMessage: (event: React.UIEvent | null, messageInput?: string) => void;
+  }> | null;
+}) {
   renderLogger.trace('Chat');
 
   const { ready, initialMessages, storeMessageHistory, importChat, exportChat, project } = useChatHistory();
@@ -86,11 +94,15 @@ interface ChatProps {
   importChat: (description: string, messages: Message[]) => void;
   exportChat: () => void;
   description?: string;
-  project?: Project
+  project?: Project;
+  cmdPrompt?: string,
+  sendMszref?: React.MutableRefObject<{
+    sendMessage: (event: React.UIEvent | null, messageInput?: string) => void;
+  }> | null;
 }
 
 export const ChatImpl = memo(
-  ({ description, initialMessages, storeMessageHistory, importChat, exportChat, project }: ChatProps) => {
+  ({ description, initialMessages, storeMessageHistory, importChat, exportChat, project, cmdPrompt, sendMszref }: ChatProps) => {
     useShortcuts();
 
     const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -158,6 +170,52 @@ export const ChatImpl = memo(
       // initialMessages,
       initialInput: Cookies.get(PROMPT_COOKIE_KEY) || '',
     });
+
+    const [isProjectSet, setIsProjectSet] = useState(false);
+
+    const [isSendMsz, setIsSendMsz] = useState(false);
+    useEffect(() => {
+      const fetchData = async () => {
+        if (cmdPrompt && !isProjectSet && !isSendMsz) {
+          try {
+            const projectName = cmdPrompt.replaceAll(' ', '-').toLowerCase();
+            setProjectName(projectName);
+            setInput(cmdPrompt);
+
+            const preferrences = await getAccountClient().getPrefs();
+            const providerKeys = preferrences['providerKeys'];
+            setApiKeys(JSON.parse(providerKeys));
+            if (providerKeys['OpenAI']) {
+              console.log('OpenAI key is exist2');
+              setProvider('OpenAI');
+              setModel('gpt-4o');
+            }
+            const authToken = (await getAccountClient().createJWT()).jwt;
+            setAuthToken(authToken);
+            setIsProjectSet(true);
+          } catch (error) {
+            console.error('Error setting project from cmdPrompt', error);
+            toast.error('There was an error processing your request, ERR: cmdPrompt_error');
+          }
+        }
+
+        if (isProjectSet && !isSendMsz) {
+          console.log('sendMessage::::cmdPrompt::', cmdPrompt);
+          console.log('sendMessage::::isProjectSet::', isProjectSet);
+          console.log('sendMessage::::isSendMsz::', isSendMsz);
+          console.log('sendMessage::::projectName::', projectName);
+          console.log('sendMessage::::apiKeys::', apiKeys);
+          console.log('sendMessage::::authToken::', authToken);
+
+
+          sendMessage(null, cmdPrompt);
+          setIsSendMsz(true);
+        }
+      }
+      fetchData();
+    }, [cmdPrompt, isProjectSet]);
+
+
     useEffect(() => {
       const prompt = searchParams.get('prompt');
       console.log(prompt, searchParams, model, provider);
@@ -237,7 +295,7 @@ export const ChatImpl = memo(
       setChatStarted(true);
     };
 
-    const sendMessage = async (_event: React.UIEvent, messageInput?: string) => {
+    const sendMessage = async (_event: React.UIEvent | null, messageInput?: string) => {
       const _input = messageInput || input;
 
       if (_input.length === 0 || isLoading) {

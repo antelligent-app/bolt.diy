@@ -13,7 +13,7 @@ import { binDates } from './date-binning';
 import { useSearchFilter } from '~/lib/hooks/useSearchFilter';
 import { LogoutButton } from './LogoutButton';
 import { SettingsKeyButton } from './SettingsKeyButton';
-import { getAccountClient, getProjects } from '~/lib/appwrite';
+import { getAccountClient, getProjects, getTags } from '~/lib/appwrite';
 import type { Project } from '~/types/project';
 import type { Models } from 'appwrite';
 import { useSearchProjectFilter } from '~/lib/hooks/useSearchProjectFilter';
@@ -78,7 +78,9 @@ export const Menu = () => {
   });
 
   const loadEntries = useCallback(async () => {
-    setProjects(await getProjects());
+    const pjs = await getProjects();
+    setProjects(pjs);
+    // setProjects(await getProjects());
     setUser(await getAccountClient().get());
     setLoadFinished(true);
   }, []);
