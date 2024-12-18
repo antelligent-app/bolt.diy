@@ -82,7 +82,7 @@ export function Chat() {
 interface ChatProps {
   initialMessages: Message[];
   storeMessageHistory: (project: Project) => void;
-  importChat: (description: string, messages: Message[]) => Promise<void>;
+  importChat: (description: string, messages: Message[]) => void;
   exportChat: () => void;
   description?: string;
   project?: Project
@@ -381,7 +381,7 @@ export const ChatImpl = memo(
             ...message,
             content: parsedMessages[i] || '',
           };
-        })}
+        }) as Message[]}
         enhancePrompt={() => {
           enhancePrompt(
             input,
