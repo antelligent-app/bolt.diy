@@ -27,6 +27,8 @@ import { ModelSelector } from '~/components/chat/ModelSelector';
 import { SpeechRecognitionButton } from '~/components/chat/SpeechRecognition';
 import type { IProviderSetting, ProviderInfo } from '~/types/model';
 import type { Project } from '~/types/project';
+import { ScreenshotStateManager } from './ScreenshotStateManager';
+import { toast } from 'react-toastify';
 
 const TEXTAREA_MIN_HEIGHT = 76;
 
@@ -79,7 +81,8 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
       input = '',
       enhancingPrompt,
       handleInputChange,
-      promptEnhanced,
+
+      // promptEnhanced,
       enhancePrompt,
       sendMessage,
       handleStop,
@@ -402,6 +405,16 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                     setImageDataList?.(imageDataList.filter((_, i) => i !== index));
                   }}
                 />
+                <ClientOnly>
+                  {() => (
+                    <ScreenshotStateManager
+                      setUploadedFiles={setUploadedFiles}
+                      setImageDataList={setImageDataList}
+                      uploadedFiles={uploadedFiles}
+                      imageDataList={imageDataList}
+                    />
+                  )}
+                </ClientOnly>
                 <div
                   className={classNames(
                     'relative shadow-xs border border-bolt-elements-borderColor backdrop-blur rounded-lg',
@@ -456,10 +469,12 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                           handleStop?.();
                           return;
                         }
+
                         // ignore if using input method engine
                         if (event.nativeEvent.isComposing) {
-                          return
+                          return;
                         }
+
                         handleSendMessage?.(event);
                       }
                     }}
@@ -502,25 +517,16 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                       <IconButton
                         title="Enhance prompt"
                         disabled={input.length === 0 || enhancingPrompt}
-                        className={classNames(
-                          'transition-all',
-                          enhancingPrompt ? 'opacity-100' : '',
-                          promptEnhanced ? 'text-bolt-elements-item-contentAccent' : '',
-                          promptEnhanced ? 'pr-1.5' : '',
-                          promptEnhanced ? 'enabled:hover:bg-bolt-elements-item-backgroundAccent' : '',
-                        )}
-                        onClick={() => enhancePrompt?.()}
+                        className={classNames('transition-all', enhancingPrompt ? 'opacity-100' : '')}
+                        onClick={() => {
+                          enhancePrompt?.();
+                          toast.success('Prompt enhanced!');
+                        }}
                       >
                         {enhancingPrompt ? (
-                          <>
-                            <div className="i-svg-spinners:90-ring-with-bg text-bolt-elements-loader-progress text-xl animate-spin"></div>
-                            <div className="ml-1.5">Enhancing prompt...</div>
-                          </>
+                          <div className="i-svg-spinners:90-ring-with-bg text-bolt-elements-loader-progress text-xl animate-spin"></div>
                         ) : (
-                          <>
-                            <div className="i-bolt:stars text-xl"></div>
-                            {promptEnhanced && <div className="ml-1.5">Prompt enhanced</div>}
-                          </>
+                          <div className="i-bolt:stars text-xl"></div>
                         )}
                       </IconButton>
 

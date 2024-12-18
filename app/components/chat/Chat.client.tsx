@@ -22,6 +22,7 @@ import { useSettings } from '~/lib/hooks/useSettings';
 import type { ProviderInfo } from '~/types/model';
 import type { Project } from '~/types/project';
 import { getAccountClient, getProjectByRepositoryName } from '~/lib/appwrite';
+import { useSearchParams } from '@remix-run/react';
 
 const toastAnimation = cssTransition({
   enter: 'animated fadeInRight',
@@ -96,10 +97,11 @@ export const ChatImpl = memo(
     const [chatStarted, setChatStarted] = useState(initialMessages.length > 0);
     const [uploadedFiles, setUploadedFiles] = useState<File[]>([]); // Move here
     const [imageDataList, setImageDataList] = useState<string[]>([]); // Move here
+    const [searchParams, setSearchParams] = useSearchParams();
     const files = useStore(workbenchStore.files);
-    const { activeProviders } = useSettings();
     const [projectName, setProjectName] = useState<string>(project ? project.name : '');
     const [authToken, setAuthToken] = useState<string>('');
+    const { activeProviders, promptId } = useSettings();
 
     const [model, setModel] = useState(() => {
       const savedModel = Cookies.get('selectedModel');
@@ -121,18 +123,28 @@ export const ChatImpl = memo(
       body: {
         apiKeys,
         files,
-        projectName
+        projectName,
+        promptId,
       },
       headers: {
         Authorization: `Bearer ${authToken}`
       },
+      sendExtraMessageFields: true,
       onError: (error) => {
         logger.error('Request failed\n\n', error);
         toast.error(
           'There was an error processing your request: ' + (error.message ? error.message : 'No details were returned'),
         );
       },
-      onFinish: () => {
+      onFinish: (message, response) => {
+        const usage = response.usage;
+
+        if (usage) {
+          console.log('Token usage:', usage);
+
+          // You can now use the usage data as needed
+        }
+
         logger.debug('Finished streaming');
       },
       onResponse: async (response) => {
@@ -143,9 +155,27 @@ export const ChatImpl = memo(
         const project = await getProjectByRepositoryName(repositoryName);
         storeMessageHistory(project);
       },
-      initialMessages,
+      // initialMessages,
       initialInput: Cookies.get(PROMPT_COOKIE_KEY) || '',
     });
+    useEffect(() => {
+      const prompt = searchParams.get('prompt');
+      console.log(prompt, searchParams, model, provider);
+
+      if (prompt) {
+        setSearchParams({});
+        runAnimation();
+        append({
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${prompt}`,
+            },
+          ] as any, // Type assertion to bypass compiler check
+        });
+      }
+    }, [model, provider, searchParams]);
 
     const { enhancingPrompt, promptEnhanced, enhancePrompt, resetEnhancer } = usePromptEnhancer();
     const { parsedMessages, parseMessages } = useMessageParser();

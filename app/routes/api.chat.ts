@@ -1,7 +1,8 @@
 import { type ActionFunctionArgs } from '@remix-run/cloudflare';
 import { createMessageDocument, createProjectDocument, validateAuthHeaders } from '~/lib/.server/appwrite-server';
+import { createDataStream } from 'ai';
 import { MAX_RESPONSE_SEGMENTS, MAX_TOKENS } from '~/lib/.server/llm/constants';
-import { CONTINUE_PROMPT } from '~/lib/.server/llm/prompts';
+import { CONTINUE_PROMPT } from '~/lib/common/prompts/prompts';
 import { streamText, type Messages, type StreamingOptions } from '~/lib/.server/llm/stream-text';
 import SwitchableStream from '~/lib/.server/llm/switchable-stream';
 import type { IProviderSetting } from '~/types/model';
@@ -16,17 +17,15 @@ export async function action(args: ActionFunctionArgs) {
   return chatAction(args);
 }
 
-function parseCookies(cookieHeader: string) {
-  const cookies: any = {};
+function parseCookies(cookieHeader: string): Record<string, string> {
+  const cookies: Record<string, string> = {};
 
-  // Split the cookie string by semicolons and spaces
   const items = cookieHeader.split(';').map((cookie) => cookie.trim());
 
   items.forEach((item) => {
     const [name, ...rest] = item.split('=');
 
     if (name && rest) {
-      // Decode the name and value, and join value parts in case it contains '='
       const decodedName = decodeURIComponent(name.trim());
       const decodedValue = decodeURIComponent(rest.join('=').trim());
       cookies[decodedName] = decodedValue;
@@ -98,15 +97,16 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
     });
   }
 
-  const { messages, files, projectName } = await request.json<{
+
+  const { messages, files, promptId, projectName } = await request.json<{
     messages: Messages;
     files: any;
+    promptId?: string;
     projectName: string;
+
   }>();
 
   const cookieHeader = request.headers.get('Cookie');
-
-  // Parse the cookie's value (returns an object or null if no cookie exists)
   const apiKeys = JSON.parse(parseCookies(cookieHeader || '').apiKeys || '{}');
   const providerSettings: Record<string, IProviderSetting> = JSON.parse(
     parseCookies(cookieHeader || '').providers || '{}',
@@ -121,6 +121,11 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
   messages.forEach(async (message) => {
     await createMessageDocument(message.role, message.content, project.$id, user.$id);
   });
+  const cumulativeUsage = {
+    completionTokens: 0,
+    promptTokens: 0,
+    totalTokens: 0,
+  };
 
   try {
     const options: StreamingOptions & {
@@ -130,11 +135,34 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
       toolChoice: 'none',
       apiKeys,
       project,
-      onFinish: async ({ text: content, finishReason }) => {
+      onFinish: async ({ text: content, finishReason, usage }) => {
         await createMessageDocument('assistant', content, project.$id, user.$id);
 
+
+        if (usage) {
+          cumulativeUsage.completionTokens += usage.completionTokens || 0;
+          cumulativeUsage.promptTokens += usage.promptTokens || 0;
+          cumulativeUsage.totalTokens += usage.totalTokens || 0;
+        }
+
         if (finishReason !== 'length') {
-          return stream.close();
+          return stream
+            .switchSource(
+              createDataStream({
+                async execute(dataStream: { writeMessageAnnotation: (arg0: { type: string; value: { completionTokens: number; promptTokens: number; totalTokens: number; }; }) => void; }) {
+                  dataStream.writeMessageAnnotation({
+                    type: 'usage',
+                    value: {
+                      completionTokens: cumulativeUsage.completionTokens,
+                      promptTokens: cumulativeUsage.promptTokens,
+                      totalTokens: cumulativeUsage.totalTokens,
+                    },
+                  });
+                },
+                onError: (error: any) => `Custom error: ${error.message}`,
+              }),
+            )
+            .then(() => stream.close());
         }
 
         if (stream.switches >= MAX_RESPONSE_SEGMENTS) {
@@ -155,9 +183,10 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
           apiKeys,
           files,
           providerSettings,
+          promptId,
         });
 
-        return stream.switchSource(result.toAIStream());
+        return stream.switchSource(result.toDataStream());
       },
     };
 
@@ -168,9 +197,10 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
       apiKeys,
       files,
       providerSettings,
+      promptId,
     });
 
-    stream.switchSource(result.toAIStream());
+    stream.switchSource(result.toDataStream());
 
     return new Response(stream.readable, {
       status: 200,
@@ -181,7 +211,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
       },
     });
   } catch (error: any) {
-    console.log(error);
+    console.error(error);
 
     if (error.message?.includes('API key')) {
       throw new Response('Invalid or missing API key', {
